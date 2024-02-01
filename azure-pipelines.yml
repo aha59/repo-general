@@ -1,19 +1,87 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# Pipeline to build, test, and deploy packages with Maven
+# Artifact Feed information must be replaced
+# Triggers assume gitflow branching strategy
+# Only snapshots are deployed to the Azure Artifacts repository
 
 trigger:
-- main
+- develop
+- user-story/*
+- release/*
+
+variables:
+- group: Maven Release Pipelines
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+stages:
+  - stage:
+    displayName: Build snapshot
+    jobs:
+      - job: Feature
+        displayName: Validate feature branch
+        condition: eq(variables['build.sourceBranch'], 'refs/heads/user-story')
+        steps:
+        - task: MavenAuthenticate@0
+          inputs:
+            artifactsFeeds: 'TCCC'
+        - task: Maven@3
+          displayName: Build and deploy snapshot
+          condition: 
+          inputs:
+            mavenPomFile: 'pom.xml'
+            mavenOptions: '-Xmx3072m'
+            javaHomeOption: 'JDKVersion'
+            jdkVersionOption: '1.8'
+            jdkArchitectureOption: 'x64'
+            publishJUnitResults: true
+            testResultsFiles: '**/surefire-reports/TEST-*.xml'
+            goals: 'test'
+      - job: Snapshot
+        displayName: Build develop branch and publish snapshot version
+        condition: eq(variables['build.sourceBranch'], 'refs/heads/develop')
+        steps:
+        - task: MavenAuthenticate@0
+          inputs:
+            artifactsFeeds: 'TCCC'
+        - task: Maven@3
+          displayName: Build and deploy snapshot
+          condition: 
+          inputs:
+            mavenPomFile: 'pom.xml'
+            mavenOptions: '-Xmx3072m'
+            javaHomeOption: 'JDKVersion'
+            jdkVersionOption: '1.8'
+            jdkArchitectureOption: 'x64'
+            publishJUnitResults: true
+            testResultsFiles: '**/surefire-reports/TEST-*.xml'
+            goals: 'deploy'
+      - job: Release
+        displayName: Build master branch and publish release version
+        condition: startsWith(variables['build.sourceBranch'], 'refs/heads/release')
+        variables:
+          ADO_USER: $(USERNAME)
+          ADO_PASS: $(PASSWORD)
+        steps:
+        - task: MavenAuthenticate@0
+          inputs:
+            artifactsFeeds: 'TCCC'
+        - task: Maven@3
+          displayName: Build and package release
+          condition:
+          inputs:
+            mavenPomFile: 'pom.xml'
+            mavenOptions: '-Xmx3072m'
+            javaHomeOption: 'JDKVersion'
+            jdkVersionOption: '1.8'
+            jdkArchitectureOption: 'x64'
+            publishJUnitResults: true
+            testResultsFiles: '**/surefire-reports/TEST-*.xml'
+            goals: 'test'
+        - task: PublishBuildArtifacts@1
+          displayName: Publish build artifact
+          inputs:
+            PathtoPublish: '$(Build.SourcesDirectory)/'
+            ArtifactName: 'drop'
+            publishLocation: 'Container'
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
